@@ -1,0 +1,977 @@
+<!--
+  Copyright (C) 2026 Shijian Chen (chenshijian@amss.ac.cn)
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program. If not, see <https://www.gnu.org/licenses/>.
+--><!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PL/0 表达式语法分析 = 下推自动机（课堂演示版）</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --border: #d8dee9;
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --ok: #0f766e;
+      --warn: #b45309;
+      --bad: #b91c1c;
+      --soft: #eef4ff;
+      --soft2: #f8fafc;
+      --stackTop: #dbeafe;
+      --stackTerm: #fef3c7;
+      --stackNonTerm: #e0e7ff;
+      --stackEnd: #e5e7eb;
+      --consumed: #cbd5e1;
+      --current: #fee2e2;
+      --future: #ecfeff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.45;
+    }
+    .page {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    header {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.2;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .teacher-note {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      padding: 12px 14px;
+      border-radius: 12px;
+      color: #9a3412;
+      font-size: 14px;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+    }
+    label {
+      font-size: 14px;
+      color: var(--muted);
+    }
+    select, input[type="text"], button, input[type="range"] {
+      font: inherit;
+    }
+    select, input[type="text"] {
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: white;
+      min-height: 40px;
+    }
+    input[type="text"] {
+      min-width: 260px;
+      flex: 1;
+    }
+    button {
+      border: 1px solid var(--border);
+      background: white;
+      border-radius: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      min-height: 40px;
+    }
+    button.primary {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .spacer { flex: 1; }
+    .speed-wrap {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .statusbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .pill {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .pill strong { color: var(--ink); }
+    .ok { color: var(--ok); }
+    .bad { color: var(--bad); }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap: 16px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+      min-height: 160px;
+    }
+    .card h2 {
+      margin: 0 0 10px 0;
+      font-size: 18px;
+    }
+    .card h3 {
+      margin: 12px 0 8px 0;
+      font-size: 15px;
+    }
+    .full { grid-column: 1 / -1; }
+    .codeblock {
+      background: var(--soft2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      font-size: 13px;
+      overflow-x: auto;
+    }
+    .grammar-note {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+    .tape {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px;
+      border-radius: 12px;
+      background: var(--soft2);
+      border: 1px solid var(--border);
+      min-height: 64px;
+      align-content: flex-start;
+    }
+    .token {
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      min-width: 42px;
+      text-align: center;
+      position: relative;
+    }
+    .token.consumed { background: var(--consumed); color: #475569; }
+    .token.current { background: var(--current); border-color: #ef4444; font-weight: 700; }
+    .token.future { background: var(--future); }
+    .token.end { background: #f3f4f6; }
+    .token .tag {
+      position: absolute;
+      top: -10px;
+      left: 50%; transform: translateX(-50%);
+      background: #111827;
+      color: white;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      letter-spacing: .2px;
+    }
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 260px;
+      background: var(--soft2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    .stack-item {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: white;
+    }
+    .stack-item.top {
+      outline: 2px solid var(--accent);
+      background: var(--stackTop);
+      font-weight: 700;
+    }
+    .stack-item.terminal { background: var(--stackTerm); }
+    .stack-item.nonterminal { background: var(--stackNonTerm); }
+    .stack-item.endmarker { background: var(--stackEnd); }
+    .stack-caption {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+    .empty-stack {
+      color: var(--muted);
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      background: white;
+    }
+    .big-action {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: var(--accent);
+    }
+    .detail {
+      background: var(--soft2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      min-height: 120px;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: white;
+      font-size: 12px;
+    }
+    .swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      display: inline-block;
+    }
+    .tips {
+      display: grid;
+      gap: 8px;
+      font-size: 14px;
+    }
+    .tip {
+      padding: 10px 12px;
+      background: var(--soft2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .mini {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .error-box {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid #fecaca;
+      background: #fef2f2;
+      color: var(--bad);
+      margin-top: 10px;
+      display: none;
+    }
+    .footer-note {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .highlight {
+      color: #111827;
+      background: #dbeafe;
+      padding: 1px 6px;
+      border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    @media (max-width: 1100px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>PL/0 表达式语法分析 ≈ 下推自动机</h1>
+      <div class="subtitle">课堂演示版：把你课件里的 <span class="highlight">expr / term / factor</span>、<span class="highlight">sym</span>、<span class="highlight">getsym</span>，翻译成一台“看输入 + 用栈工作”的下推自动机。</div>
+      <div class="teacher-note">讲课建议：先让学生只看“当前 <b>sym</b> 是什么、输入指针有没有前进、栈里多了什么/少了什么”；等他们看懂节奏，再点出“递归调用栈 = 程序写法，下推栈 = 理论写法”。</div>
+    </header>
+
+    <div class="controls">
+      <label for="exampleSelect">示例</label>
+      <select id="exampleSelect">
+        <option value="(1+2)*3">(1+2)*3</option>
+        <option value="a+b*c">a+b*c</option>
+        <option value="2*3+4/2">2*3+4/2</option>
+        <option value="(a+b)*(c+2)">(a+b)*(c+2)</option>
+        <option value="(1+2">(1+2   （故意出错）</option>
+      </select>
+      <input id="manualInput" type="text" value="(1+2)*3" placeholder="也可以自己输入表达式，例如 a+b*(c+2)" />
+      <button id="buildBtn" class="primary">生成演示</button>
+      <button id="prevBtn">上一步</button>
+      <button id="nextBtn">下一步</button>
+      <button id="playBtn">自动播放</button>
+      <button id="resetBtn">重置</button>
+      <div class="spacer"></div>
+      <div class="speed-wrap">
+        <label for="speedRange">速度</label>
+        <input id="speedRange" type="range" min="250" max="2000" step="50" value="900" />
+        <span id="speedText" class="mini">900ms/步</span>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <div class="pill">当前步骤：<strong id="stepText">0 / 0</strong></div>
+      <div class="pill">当前 sym / lookahead：<strong id="lookaheadText">-</strong></div>
+      <div class="pill">输入串：<strong id="sourceText">-</strong></div>
+      <div class="pill">结论：<strong id="resultText">待分析</strong></div>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <h2>课件里的表达式层次</h2>
+        <div class="codeblock">&lt;表达式&gt; ::= &lt;项&gt; { (+|-) &lt;项&gt; }
+&lt;项&gt; ::= &lt;因子&gt; { (*|/) &lt;因子&gt; }
+&lt;因子&gt; ::= id | num | '(' &lt;表达式&gt; ')'</div>
+        <div class="grammar-note">为了让“压栈 / 出栈”一格一格可见，演示时把上面的 EBNF 暂时展开成普通 BNF：</div>
+        <div class="codeblock">E  → T E'
+E' → + T E' | - T E' | ε
+T  → F T'
+T' → * F T' | / F T' | ε
+F  → id | num | ( E )</div>
+        <h3>和你课件里的伪代码怎么对上</h3>
+        <div class="codeblock">expr   ≈  E
+term   ≈  T
+factor ≈  F
+getsym ≈  匹配终结符后，输入指针前进一格
+sym    ≈  当前 lookahead（当前看到的单词）</div>
+        <div class="grammar-note">注意：语法图是在描述“语言长什么样”；右边的下推栈是在描述“分析器怎么识别它”。相关，但不是同一张图。</div>
+      </section>
+
+      <section class="card">
+        <h2>输入串与当前 sym</h2>
+        <div id="tape" class="tape"></div>
+        <div class="legend">
+          <span><i class="swatch" style="background: var(--consumed);"></i> 已经匹配</span>
+          <span><i class="swatch" style="background: var(--current);"></i> 当前 sym</span>
+          <span><i class="swatch" style="background: var(--future);"></i> 还未看到</span>
+        </div>
+        <div class="error-box" id="errorBox"></div>
+      </section>
+
+      <section class="card">
+        <h2>本步动作</h2>
+        <div id="actionTitle" class="big-action">-</div>
+        <div id="actionDetail" class="detail">点击“生成演示”，再按“下一步”逐步播放。</div>
+        <h3>老师这一刻可以直接说</h3>
+        <div id="teacherTalk" class="detail"></div>
+      </section>
+
+      <section class="card">
+        <h2>递归子程序法：调用栈</h2>
+        <div id="callStack" class="stack"></div>
+        <div class="stack-caption">上面这一列对应课件里的 <span class="highlight">expr / term / factor</span> 递归调用。最顶上是当前正在工作的过程。</div>
+      </section>
+
+      <section class="card">
+        <h2>下推自动机：分析栈</h2>
+        <div id="pdaStack" class="stack"></div>
+        <div class="stack-caption">上面这一列是 PDA 的栈。最顶上是下一步要处理的符号。它能压栈，也能弹栈，所以比有限自动机强。</div>
+      </section>
+
+      <section class="card">
+        <h2>这一步到底在证明什么</h2>
+        <div class="tips">
+          <div class="tip"><b>1. 当前 sym 在驱动分支。</b> 看的是当前输入，而不是整串未来。</div>
+          <div class="tip"><b>2. getsym 在推动流程。</b> 只有匹配了终结符，输入指针才前进。</div>
+          <div class="tip"><b>3. 栈在保存“还没完成的结构”。</b> 例如看到 <span class="highlight">(</span> 以后，分析器会把“以后还要补一个 <span class="highlight">)</span> ”这件事记在栈里。</div>
+          <div class="tip"><b>4. 所以语法分析对应下推能力。</b> 不是只靠有限状态乱猜，而是靠“当前状态 + 一个栈”来工作。</div>
+        </div>
+      </section>
+
+      <section class="card full">
+        <h2>如何在你的这套 PPT 里接上这页演示</h2>
+        <div class="tips">
+          <div class="tip">先接在“表达式的 EBNF”与“expr / term / factor 伪代码”之后。学生已经熟悉表达式分层，此时最容易把 <b>递归调用栈</b> 和 <b>PDA 栈</b> 对起来。</div>
+          <div class="tip">第一遍只放 <span class="highlight">(1+2)*3</span>。因为它同时展示了：括号、优先级、嵌套返回、以及为什么需要栈。</div>
+          <div class="tip">第二遍再换 <span class="highlight">a+b*c</span>。让学生看到：就算没有括号，表达式分层依然会把“加减”和“乘除”分到不同层里。</div>
+          <div class="tip">如果你要提问，可以固定问四句：<b>现在 sym 是谁？getsym 有没有发生？调用栈顶是谁？PDA 栈顶是谁？</b> 这样学生会逐渐形成结构感。</div>
+        </div>
+      </section>
+    </div>
+
+    <div class="footer-note">说明：这是一个“课堂解释器”，目的是把课件中的表达式分析可视化，不是完整的 PL/0 编译器。为了让栈变化更清楚，内部把课件中的 EBNF 改写成了等价的 BNF 辅助符号 <span class="highlight">E'</span> 和 <span class="highlight">T'</span>。</div>
+  </div>
+
+  <script>
+    const exampleSelect = document.getElementById('exampleSelect');
+    const manualInput = document.getElementById('manualInput');
+    const buildBtn = document.getElementById('buildBtn');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const playBtn = document.getElementById('playBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const speedRange = document.getElementById('speedRange');
+    const speedText = document.getElementById('speedText');
+
+    const stepText = document.getElementById('stepText');
+    const lookaheadText = document.getElementById('lookaheadText');
+    const sourceText = document.getElementById('sourceText');
+    const resultText = document.getElementById('resultText');
+
+    const tape = document.getElementById('tape');
+    const actionTitle = document.getElementById('actionTitle');
+    const actionDetail = document.getElementById('actionDetail');
+    const teacherTalk = document.getElementById('teacherTalk');
+    const callStack = document.getElementById('callStack');
+    const pdaStack = document.getElementById('pdaStack');
+    const errorBox = document.getElementById('errorBox');
+
+    let trace = [];
+    let currentStep = 0;
+    let timer = null;
+    let analysisOk = null;
+    let analysisError = '';
+
+    const nonTerminals = new Set(['E', "E'", 'T', "T'", 'F']);
+    const tokenLabels = {
+      'id': 'id',
+      'num': 'num',
+      '+': '+',
+      '-': '-',
+      '*': '*',
+      '/': '/',
+      '(': '(',
+      ')': ')',
+      '$': '$'
+    };
+    const stackLabels = {
+      'E': 'E / expr',
+      "E'": "E' / expr尾巴",
+      'T': 'T / term',
+      "T'": "T' / term尾巴",
+      'F': 'F / factor',
+      'id': 'id',
+      'num': 'num',
+      '+': '+',
+      '-': '-',
+      '*': '*',
+      '/': '/',
+      '(': '(',
+      ')': ')',
+      '$': '$'
+    };
+    const callLabels = {
+      'E': 'expr / 表达式',
+      "E'": "expr' / 加减尾巴",
+      'T': 'term / 项',
+      "T'": "term' / 乘除尾巴",
+      'F': 'factor / 因子'
+    };
+
+    exampleSelect.addEventListener('change', () => {
+      manualInput.value = exampleSelect.value;
+      buildVisualization();
+    });
+
+    speedRange.addEventListener('input', () => {
+      speedText.textContent = `${speedRange.value}ms/步`;
+      if (timer) {
+        stopAutoPlay();
+        startAutoPlay();
+      }
+    });
+
+    buildBtn.addEventListener('click', buildVisualization);
+    prevBtn.addEventListener('click', () => stepTo(currentStep - 1));
+    nextBtn.addEventListener('click', () => stepTo(currentStep + 1));
+    resetBtn.addEventListener('click', () => stepTo(0));
+    playBtn.addEventListener('click', () => {
+      if (timer) stopAutoPlay();
+      else startAutoPlay();
+    });
+
+    function tokenize(src) {
+      const tokens = [];
+      let i = 0;
+      while (i < src.length) {
+        const ch = src[i];
+        if (/\s/.test(ch)) { i += 1; continue; }
+        if (/[0-9]/.test(ch)) {
+          let j = i;
+          while (j < src.length && /[0-9]/.test(src[j])) j += 1;
+          tokens.push({ type: 'num', value: src.slice(i, j) });
+          i = j;
+          continue;
+        }
+        if (/[A-Za-z_]/.test(ch)) {
+          let j = i;
+          while (j < src.length && /[A-Za-z0-9_]/.test(src[j])) j += 1;
+          tokens.push({ type: 'id', value: src.slice(i, j) });
+          i = j;
+          continue;
+        }
+        if ('+-*/()'.includes(ch)) {
+          tokens.push({ type: ch, value: ch });
+          i += 1;
+          continue;
+        }
+        throw new Error(`非法字符：${ch}`);
+      }
+      tokens.push({ type: '$', value: '$' });
+      return tokens;
+    }
+
+    class TraceBuilder {
+      constructor(src) {
+        this.src = src;
+        this.tokens = tokenize(src);
+        this.index = 0;
+        this.call = [];
+        this.pda = ['$', 'E'];
+        this.events = [];
+        this.record('初始化', '准备开始分析：输入串、调用栈、下推栈都已经就位。', '先让学生不要急着看结论，只看三件事：当前 sym、输入有没有前进、栈顶是谁。');
+      }
+
+      look() {
+        return this.tokens[this.index] || { type: '<EOF>', value: '<EOF>' };
+      }
+
+      snapshot() {
+        return {
+          source: this.src,
+          tokens: this.tokens.map(t => ({ ...t })),
+          index: this.index,
+          lookahead: { ...this.look() },
+          call: [...this.call],
+          pda: [...this.pda]
+        };
+      }
+
+      record(action, detail, talk, ok = true) {
+        this.events.push({ ...this.snapshot(), action, detail, talk, ok });
+      }
+
+      enter(nt) {
+        this.call.push(nt);
+        this.record(
+          `进入 ${callLabels[nt]}`,
+          `递归子程序法进入 ${callLabels[nt]}。程序写法里，这是一次函数调用；自动机眼里，这意味着我们准备处理一个新的非终结符。`,
+          `现在先别急着管整串表达式，只盯住一个语法单位：${callLabels[nt]}。这就是“套娃”里的新一层。`
+        );
+      }
+
+      exit(nt) {
+        this.call.pop();
+        this.record(
+          `返回 ${callLabels[nt]}`,
+          `${callLabels[nt]} 已经识别完毕，控制权返回上一层。`,
+          `同学们注意，这里没有读新字符，说明“返回”靠的不是 getsym，而是前面那一层已经把该做的工作做完了。`
+        );
+      }
+
+      expand(nt, rhs, detail, talk) {
+        const top = this.pda.pop();
+        if (top !== nt) {
+          throw new Error(`下推栈不同步：期待栈顶 ${nt}，实际是 ${top}`);
+        }
+        const pushList = rhs.filter(x => x !== 'ε');
+        for (let i = pushList.length - 1; i >= 0; i -= 1) {
+          this.pda.push(pushList[i]);
+        }
+        this.record(`展开 ${nt}`, detail, talk);
+      }
+
+      match(terminal, detail, talk) {
+        const top = this.pda.pop();
+        if (top !== terminal) {
+          throw new Error(`下推栈不同步：期待终结符 ${terminal}，实际是 ${top}`);
+        }
+        const la = this.look();
+        if (la.type !== terminal) {
+          throw new Error(`匹配失败：期待 ${terminal}，但当前是 ${la.value}`);
+        }
+        this.index += 1;
+        this.record(`匹配 ${la.value}`, detail, talk);
+      }
+
+      fail(message, talk) {
+        this.record('出错', message, talk, false);
+        throw new Error(message);
+      }
+
+      parse() {
+        try {
+          this.parseE();
+          if (this.look().type !== '$') {
+            this.fail(
+              `分析结束后还有剩余输入：${this.look().value}`,
+              `这说明前面的结构虽然暂时看起来像对的，但并没有把整串输入都解释完。`
+            );
+          }
+          if (this.pda[this.pda.length - 1] !== '$') {
+            this.fail(
+              '下推栈没有回到结束标记。',
+              `栈没收干净，说明还有没完成的结构。`
+            );
+          }
+          this.match(
+            '$',
+            '匹配结束标记 $，说明输入已经完全吃完。',
+            '这一刻可以让学生看到：输入走到头了，栈也回到底了，两边同时收尾，这就是接受。'
+          );
+          this.record(
+            '接受',
+            '输入串被接受：递归调用顺利返回到最外层，同时下推栈清空到结束标记。',
+            '可以把这一刻总结成一句话：程序写法看起来像递归，理论写法看起来像下推自动机，但它们都靠一个栈完成了同一件事。'
+          );
+          return { events: this.events, ok: true, error: '' };
+        } catch (err) {
+          return { events: this.events, ok: false, error: String(err.message || err) };
+        }
+      }
+
+      parseE() {
+        this.enter('E');
+        this.expand(
+          'E',
+          ['T', "E'"],
+          `当前把表达式按课件里的层次拆成：先处理一个项，再处理后面可能重复出现的加减部分。所以展开 E → T E'。`,
+          '这里最适合停一下：expr 并不是一口气把所有东西都吃掉，而是先交给 term，再看后面有没有加减尾巴。'
+        );
+        this.parseT();
+        this.parseE1();
+        this.exit('E');
+      }
+
+      parseE1() {
+        this.enter("E'");
+        const la = this.look();
+        if (la.type === '+' || la.type === '-') {
+          this.expand(
+            "E'",
+            [la.type, 'T', "E'"],
+            `当前 sym 是 ${la.value}，说明加减串还没有结束，所以展开 E' → ${la.value} T E'。`,
+            `告诉学生：这不是“又看了一遍整串”，只是当前看到 ${la.value}，所以知道这一层还要继续。`
+          );
+          this.match(
+            la.type,
+            `匹配到加减运算符 ${la.value}，执行一次 getsym，输入前进一步。`,
+            'getsym 的感觉一定要说出来：它像一只手把分析器往前推。没有匹配，就没有前进。'
+          );
+          this.parseT();
+          this.parseE1();
+        } else if (la.type === ')' || la.type === '$') {
+          this.expand(
+            "E'",
+            ['ε'],
+            `当前 sym 是 ${la.value}，这意味着这一级的加减串到头了，所以 E' → ε。`,
+            '这里很好讲“空产生式”：不是没干活，而是根据当前 sym 判断，这一层应该停了。'
+          );
+        } else {
+          this.fail(
+            `在 E' 位置看到了 ${la.value}，这里只能是 +、-、) 或结束。`,
+            `这一步适合让学生体会：错误不是“程序不高兴”，而是当前 sym 无法进入任何合法分支。`
+          );
+        }
+        this.exit("E'");
+      }
+
+      parseT() {
+        this.enter('T');
+        this.expand(
+          'T',
+          ['F', "T'"],
+          `当前把“项”拆成：先处理一个因子，再处理后面可能重复出现的乘除部分。所以展开 T → F T'。`,
+          '可以顺势问学生：为什么这里先看 factor？因为在表达式层次里，项是由因子堆起来的。'
+        );
+        this.parseF();
+        this.parseT1();
+        this.exit('T');
+      }
+
+      parseT1() {
+        this.enter("T'");
+        const la = this.look();
+        if (la.type === '*' || la.type === '/') {
+          this.expand(
+            "T'",
+            [la.type, 'F', "T'"],
+            `当前 sym 是 ${la.value}，说明乘除串还在继续，所以展开 T' → ${la.value} F T'。`,
+            '这里要让学生第一次清楚看到：当前 sym 不只驱动分支，也驱动循环。'
+          );
+          this.match(
+            la.type,
+            `匹配到乘除运算符 ${la.value}，执行 getsym，输入继续前进。`,
+            '和刚才的加减一样，运算符本身也要被精确匹配，匹配以后指针才会走。'
+          );
+          this.parseF();
+          this.parseT1();
+        } else if (la.type === '+' || la.type === '-' || la.type === ')' || la.type === '$') {
+          this.expand(
+            "T'",
+            ['ε'],
+            `当前 sym 是 ${la.value}，说明这一层乘除串已经结束，所以 T' → ε。`,
+            '这一步特别能解释优先级：term 这一层一旦看到 + 或 -，就知道乘除该收尾了。'
+          );
+        } else {
+          this.fail(
+            `在 T' 位置看到了 ${la.value}，这里只能是 *、/、+、-、) 或结束。`,
+            '如果学生问“为什么这里不能直接接数字”，就说明他们开始真正理解文法边界了。'
+          );
+        }
+        this.exit("T'");
+      }
+
+      parseF() {
+        this.enter('F');
+        const la = this.look();
+        if (la.type === 'id') {
+          this.expand(
+            'F',
+            ['id'],
+            `当前 sym 是标识符 ${la.value}，所以因子走标识符分支：F → id。`,
+            'factor 不是在“计算值”，而是在试探：当前输入更像哪一条合法分支。'
+          );
+          this.match(
+            'id',
+            `匹配到标识符 ${la.value}，执行 getsym。`,
+            '这里可以提醒学生：词法分析已经把 a、abc、x2 都送成了同一种类别 id。语法分析看的是类别。'
+          );
+        } else if (la.type === 'num') {
+          this.expand(
+            'F',
+            ['num'],
+            `当前 sym 是数字 ${la.value}，所以因子走数字分支：F → num。`,
+            '这一步非常像你课件里 factor 的 if-else 试探结构：先看当前符号像不像某一条路。'
+          );
+          this.match(
+            'num',
+            `匹配到数字 ${la.value}，执行 getsym。`,
+            '数字被匹配后，输入前进一步。让学生盯住这一点：只有终结符匹配成功，getsym 才发生。'
+          );
+        } else if (la.type === '(') {
+          this.expand(
+            'F',
+            ['(', 'E', ')'],
+            `当前 sym 是左括号，所以因子进入括号分支：F → ( E )。`,
+            '这是全场最值钱的一步：一旦看到左括号，分析器必须把“将来还要补一个右括号”这件事记住，栈就派上用场了。'
+          );
+          this.match(
+            '(',
+            '匹配到左括号，执行 getsym，正式进入括号内部。',
+            '你可以现场比划一下：跨过一扇门，走进括号里面；但门还没关，右括号这件事已经被栈记住了。'
+          );
+          this.parseE();
+          if (this.look().type !== ')') {
+            this.fail(
+              '括号没有正确闭合，期待 )。',
+              '这一步最适合告诉学生：有限自动机记不住“还欠一个右括号”，而下推栈可以。'
+            );
+          }
+          this.match(
+            ')',
+            '匹配到右括号，括号内的子表达式分析完成。',
+            '这一刻栈里先前记下的“以后要补一个 )”终于兑现了。'
+          );
+        } else {
+          this.fail(
+            `在 F 位置看到了 ${la.value}，这里只能是 id、num 或 (。`,
+            '让学生感受一下：因子的入口很窄，进不来就不是合法表达式。'
+          );
+        }
+        this.exit('F');
+      }
+    }
+
+    function buildVisualization() {
+      stopAutoPlay();
+      errorBox.style.display = 'none';
+      errorBox.textContent = '';
+      const source = manualInput.value.trim();
+      sourceText.textContent = source || '(空)';
+      try {
+        const builder = new TraceBuilder(source);
+        const result = builder.parse();
+        trace = result.events;
+        analysisOk = result.ok;
+        analysisError = result.error;
+        currentStep = 0;
+        render();
+      } catch (err) {
+        trace = [];
+        analysisOk = false;
+        analysisError = String(err.message || err);
+        render();
+      }
+    }
+
+    function render() {
+      if (!trace.length) {
+        stepText.textContent = '0 / 0';
+        lookaheadText.textContent = '-';
+        resultText.textContent = '待分析';
+        actionTitle.textContent = '-';
+        actionDetail.textContent = '没有可展示的步骤。';
+        teacherTalk.textContent = '请先生成演示。';
+        tape.innerHTML = '';
+        callStack.innerHTML = '<div class="empty-stack">调用栈暂未生成</div>';
+        pdaStack.innerHTML = '<div class="empty-stack">下推栈暂未生成</div>';
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        resetBtn.disabled = true;
+        playBtn.disabled = true;
+        return;
+      }
+
+      currentStep = Math.max(0, Math.min(currentStep, trace.length - 1));
+      const state = trace[currentStep];
+
+      stepText.textContent = `${currentStep + 1} / ${trace.length}`;
+      lookaheadText.textContent = `${tokenLabels[state.lookahead.type] || state.lookahead.type} (${state.lookahead.value})`;
+      resultText.innerHTML = analysisOk
+        ? '<span class="ok">接受</span>'
+        : `<span class="bad">未通过</span>`;
+
+      actionTitle.textContent = state.action;
+      actionDetail.textContent = state.detail;
+      teacherTalk.textContent = state.talk;
+
+      renderTape(state);
+      renderStack(callStack, state.call, true);
+      renderStack(pdaStack, state.pda, false);
+
+      if (!analysisOk && (state.action === '出错' || currentStep === trace.length - 1)) {
+        errorBox.style.display = 'block';
+        errorBox.textContent = analysisError || state.detail;
+      } else {
+        errorBox.style.display = 'none';
+        errorBox.textContent = '';
+      }
+
+      prevBtn.disabled = currentStep <= 0;
+      nextBtn.disabled = currentStep >= trace.length - 1;
+      resetBtn.disabled = false;
+      playBtn.disabled = false;
+      playBtn.textContent = timer ? '暂停' : '自动播放';
+    }
+
+    function renderTape(state) {
+      tape.innerHTML = '';
+      state.tokens.forEach((tok, idx) => {
+        const div = document.createElement('div');
+        div.className = 'token';
+        if (idx < state.index) div.classList.add('consumed');
+        else if (idx === state.index) div.classList.add('current');
+        else div.classList.add('future');
+        if (tok.type === '$') div.classList.add('end');
+        div.textContent = tok.value;
+        const tag = document.createElement('div');
+        tag.className = 'tag';
+        tag.textContent = tok.type;
+        div.appendChild(tag);
+        tape.appendChild(div);
+      });
+    }
+
+    function renderStack(container, stackData, isCall) {
+      container.innerHTML = '';
+      if (!stackData.length) {
+        container.innerHTML = '<div class="empty-stack">（空）</div>';
+        return;
+      }
+      const items = [...stackData].reverse();
+      items.forEach((item, idx) => {
+        const div = document.createElement('div');
+        div.className = 'stack-item';
+        if (idx === 0) div.classList.add('top');
+        if (!isCall) {
+          if (item === '$') div.classList.add('endmarker');
+          else if (nonTerminals.has(item)) div.classList.add('nonterminal');
+          else div.classList.add('terminal');
+          div.textContent = stackLabels[item] || item;
+        } else {
+          div.classList.add('nonterminal');
+          div.textContent = callLabels[item] || item;
+        }
+        container.appendChild(div);
+      });
+    }
+
+    function stepTo(n) {
+      if (!trace.length) return;
+      currentStep = Math.max(0, Math.min(n, trace.length - 1));
+      render();
+    }
+
+    function startAutoPlay() {
+      if (!trace.length) return;
+      if (currentStep >= trace.length - 1) currentStep = 0;
+      playBtn.textContent = '暂停';
+      timer = setInterval(() => {
+        if (currentStep >= trace.length - 1) {
+          stopAutoPlay();
+          return;
+        }
+        currentStep += 1;
+        render();
+      }, Number(speedRange.value));
+      render();
+    }
+
+    function stopAutoPlay() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      render();
+    }
+
+    buildVisualization();
+  </script>
+</body>
+</html>
